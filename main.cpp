@@ -22,9 +22,11 @@
 #define WHISPER_N_MELS 80
 #define SIN_COS_N_COUNT WHISPER_N_FFT
 #define CHECKPT std::cout << __func__ << ":" << __LINE__ << '\n'
-#define DEBUG 42
+// #define DEBUG 42
 
-using PCMData = std::pair<std::vector<int16_t>, std::streamsize>;
+using PCMSz = uint8_t;
+using PCMBytesVec = std::vector<uint8_t>;
+using PCMData = std::pair<PCMBytesVec, std::streamsize>;
 using PCMDataQueue = std::queue<PCMData>;
 
 std::mutex mu;
@@ -73,6 +75,7 @@ public:
 
 } // Logger namespace
 using namespace Logger;
+
 
 struct whisper_filters
 {
@@ -154,15 +157,13 @@ static void fft(const std::vector<float> &in, std::vector<float> &out)
 
     int N = in.size();
 
-    if (N == 1)
-    {
+    if (N == 1) {
         out[0] = in[0];
         out[1] = 0;
         return;
     }
 
-    if (N % 2 == 1)
-    {
+    if (N % 2 == 1) {
         dft(in, out);
         return;
     }
@@ -173,16 +174,11 @@ static void fft(const std::vector<float> &in, std::vector<float> &out)
     even.reserve(N / 2);
     odd.reserve(N / 2);
 
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         if (i % 2 == 0)
-        {
             even.push_back(in[i]);
-        }
         else
-        {
             odd.push_back(in[i]);
-        }
     }
 
     std::vector<float> even_fft;
@@ -192,8 +188,7 @@ static void fft(const std::vector<float> &in, std::vector<float> &out)
     fft(odd, odd_fft);
 
     const int sin_cos_step = SIN_COS_N_COUNT / N;
-    for (int k = 0; k < N / 2; k++)
-    {
+    for (int k = 0; k < N / 2; k++) {
         int idx = k * sin_cos_step; // t = 2*M_PI*k/N
         float re = cos_vals[idx];   // cos(t)
         float im = -sin_vals[idx];  // sin(t)
@@ -468,84 +463,99 @@ bool read_pcm32(const std::string &fname, std::vector<float> &pcmf32, std::vecto
 }
 
 
-// bool readPCMS16LE(const std::vector<int16_t>& PCMBytesVec,
-//                   const std::streamsize sizeInBytes /* Should be PCMBytesVec.size() / 2, but just in case */,
-//                   std::vector<float>& pcmf32,
-//                   std::vector<std::vector<float>>& pcmf32s,
-//                   bool stereo)
-// {
-//     // Calculate the number of samples
-//     std::streamsize num_samples = sizeInBytes / sizeof(int16_t); // Essentially divide by 2
-//     std::streamsize num_samples_per_channel = stereo ? num_samples / 2 : num_samples;
-
-//     // Create a vector to hold the samples
-//     // std::vector<int16_t> samples(num_samples);
-
-//     // // Read the samples from the file
-//     // if (file.read(reinterpret_cast<char*>(samples.data()), size) != size)
-//     //     throw std::runtime_error("Failed to read all samples!");
-
-//     // Convert to float and normalize to range [-1.0, 1.0]
-//     pcmf32.reserve(num_samples_per_channel);
-
-//     if (stereo) {
-//         pcmf32s.resize(2);
-//         pcmf32s[0].reserve(num_samples_per_channel);
-//         pcmf32s[1].reserve(num_samples_per_channel);
-//     }
-
-//     for (std::streamsize i = 0; i < num_samples; ++i) {
-//         float normalized_sample = PCMBytesVec[i] / 32768.0f; // Normalize 16-bit range to [-1.0, 1.0]
-
-//         if (stereo)
-//             pcmf32s[i % 2].push_back(normalized_sample);
-//         else
-//             pcmf32.push_back(normalized_sample);
-//     }
-
-//     // If stereo, we need to de-interleave the channels
-//     if (stereo) {
-//         std::vector<float> left_channel(num_samples_per_channel);
-//         std::vector<float> right_channel(num_samples_per_channel);
-
-//         for (std::streamsize i = 0, j = 0; i < num_samples; i += 2, ++j) {
-//             left_channel[j] = pcmf32[i];
-//             right_channel[j] = pcmf32[i + 1];
-//         }
-
-//         pcmf32s[0] = std::move(left_channel);
-//         pcmf32s[1] = std::move(right_channel);
-//         pcmf32.clear(); // Clear the mono vector, as it's not needed for stereo
-//     }
-
-//     return true;
-// }
-
-
-bool readPCMS16LE(const std::vector<int16_t>& PCMBytesVec,
+bool readPCMS16LE2(const std::vector<int16_t>& PCMBytesVec,
+                  const std::streamsize sizeInBytes /* Should be PCMBytesVec.size() / 2, but just in case */,
                   std::vector<float>& pcmf32,
                   std::vector<std::vector<float>>& pcmf32s,
                   bool stereo)
 {
     // Calculate the number of samples
-    std::streamsize num_samples = PCMBytesVec.size();
+    std::streamsize num_samples = sizeInBytes / sizeof(int16_t); // Essentially divide by 2
     std::streamsize num_samples_per_channel = stereo ? num_samples / 2 : num_samples;
-    // Clear the output vectors
-    pcmf32.clear();
-    pcmf32s.clear();
+
+    // Create a vector to hold the samples
+    // std::vector<int16_t> samples(num_samples);
+
+    // // Read the samples from the file
+    // if (file.read(reinterpret_cast<char*>(samples.data()), size) != size)
+    //     throw std::runtime_error("Failed to read all samples!");
+
     // Convert to float and normalize to range [-1.0, 1.0]
+    pcmf32.reserve(num_samples_per_channel);
+
     if (stereo) {
         pcmf32s.resize(2);
-        pcmf32s[0].resize(num_samples_per_channel);
-        pcmf32s[1].resize(num_samples_per_channel);
-        for (std::streamsize i = 0; i < num_samples; i += 2) {
-            pcmf32s[0][i / 2] = static_cast<float>(PCMBytesVec[i]) / 32768.0f;
-            pcmf32s[1][i / 2] = static_cast<float>(PCMBytesVec[i + 1]) / 32768.0f;
+        pcmf32s[0].reserve(num_samples_per_channel);
+        pcmf32s[1].reserve(num_samples_per_channel);
+    }
+
+    for (std::streamsize i = 0; i < num_samples; ++i) {
+        float normalized_sample = PCMBytesVec[i] / 32768.0f; // Normalize 16-bit range to [-1.0, 1.0]
+
+        if (stereo)
+            pcmf32s[i % 2].push_back(normalized_sample);
+        else
+            pcmf32.push_back(normalized_sample);
+    }
+
+    // If stereo, we need to de-interleave the channels
+    if (stereo) {
+        std::vector<float> left_channel(num_samples_per_channel);
+        std::vector<float> right_channel(num_samples_per_channel);
+
+        for (std::streamsize i = 0, j = 0; i < num_samples; i += 2, ++j) {
+            left_channel[j] = pcmf32[i];
+            right_channel[j] = pcmf32[i + 1];
         }
-    } else {
-        pcmf32.resize(num_samples_per_channel);
-        for (std::streamsize i = 0; i < num_samples; ++i) {
-            pcmf32[i] = static_cast<float>(PCMBytesVec[i]) / 32768.0f;
+
+        pcmf32s[0] = std::move(left_channel);
+        pcmf32s[1] = std::move(right_channel);
+        pcmf32.clear(); // Clear the mono vector, as it's not needed for stereo
+    }
+
+    return true;
+}
+
+
+bool readPCMS16LE(const PCMBytesVec &pcm_bytes,
+                 std::vector<float> &pcmf32,
+                 std::vector<std::vector<float>> &pcmf32s,
+                 bool stereo)
+{
+    // Calculate the number of samples
+    std::streamsize size = pcm_bytes.size();
+    std::streamsize num_samples = size / sizeof(int16_t);
+    // Reserve space for the normalized samples
+    pcmf32.clear();
+    if (stereo)
+    {
+        pcmf32s.clear();
+        pcmf32s.resize(2);
+        pcmf32s[0].reserve(num_samples / 2);
+        pcmf32s[1].reserve(num_samples / 2);
+    }
+    else
+    {
+        pcmf32.reserve(num_samples);
+    }
+    // Convert bytes to 16-bit PCM and normalize
+    for (std::streamsize i = 0; i < num_samples; ++i)
+    {
+        // Combine two bytes into a 16-bit integer (assuming little-endian byte order)
+        int16_t sample = static_cast<int16_t>(pcm_bytes[2 * i] | (pcm_bytes[2 * i + 1] << 8));
+        // Normalize and add to pcmf32 or pcmf32s
+        float normalized_sample = sample / 32768.0f;
+        // Handle the edge case for the minimum negative value
+        if (sample == std::numeric_limits<int16_t>::min())
+            normalized_sample = -1.0f;
+        if (stereo)
+        {
+            // De-interleave stereo samples into separate channel vectors
+            pcmf32s[i % 2].push_back(normalized_sample);
+        }
+        else
+        {
+            pcmf32.push_back(normalized_sample);
         }
     }
     return true;
@@ -617,11 +627,6 @@ bool read_pcm_16b(const std::string &fname, std::vector<float> &pcmf32, std::vec
 bool read_mel_filters(const std::string fname, whisper_filters &mel_filters)
 {
     // Open the binary file
-    static bool leaveEarly = false;
-
-    if (leaveEarly)
-        return true;
-
     std::ifstream bin_file(fname, std::ios::binary);
 
     if (!bin_file.is_open())
@@ -654,7 +659,6 @@ bool read_mel_filters(const std::string fname, whisper_filters &mel_filters)
     // Now mel_filters contains the Mel filter banks and can be accessed as needed
     // For example, to access the filter bank for the m-th Mel and the f-th frequency bin:
     // float value = mel_filters[m * n_fft + f];
-    leaveEarly = true;
 
     return true;
 }
@@ -667,8 +671,7 @@ bool read_mel_data(const std::string fname, int64_t n_rows, int64_t n_frame)
 
     // Open the binary file for reading
     std::ifstream in(fname, std::ios::in | std::ios::binary);
-    if (!in)
-    {
+    if (!in) {
         std::cerr << "Cannot open " << fname << " for reading\n";
         return false;
     }
@@ -677,26 +680,20 @@ bool read_mel_data(const std::string fname, int64_t n_rows, int64_t n_frame)
     std::vector<std::vector<std::vector<float>>> mel_data_3D(n_batch, std::vector<std::vector<float>>(n_rows, std::vector<float>(n_frame)));
 
     // Read data from the file
-    for (auto &batch : mel_data_3D)
-    {
+    for (auto &batch : mel_data_3D) {
         for (auto &row : batch)
-        {
             in.read(reinterpret_cast<char *>(row.data()), row.size() * sizeof(float));
-        }
     }
 
     in.close();
 
     // Now, mel_data_3D contains the data read from the file
     // You can process or use it as needed
-    for (auto &batch : mel_data_3D)
-    {
-        for (auto &row : batch)
-        {
+    for (auto &batch : mel_data_3D) {
+        for (auto &row : batch) {
             for (auto &value : row)
-            {
                 // printf("%f ", value);
-            }
+                ;
         }
     }
     return true;
@@ -755,26 +752,19 @@ void featureExtractor(const PCMData& data)
     int n_cols = mel.n_len;
     std::vector<std::vector<float>> mel_data_2D(n_rows, std::vector<float>(n_frame));
 
-    if (n_frame < n_cols)
-    {
+    if (n_frame < n_cols) {
         int diff = n_cols - n_frame;
-        for (int i = 0; i < n_rows; ++i)
-        {
-            for (int j = 0; j < n_cols; ++j)
-            {
+
+        for (int i = 0; i < n_rows; ++i) {
+            for (int j = 0; j < n_cols; ++j) {
                 if (j < n_cols - diff)
-                {
                     mel_data_2D[i][j] = mel.data[i * n_cols + j];
-                }
             }
         }
     }
-    else
-    {
-        for (int i = 0; i < n_rows; ++i)
-        {
-            for (int j = 0; j < n_frame; ++j)
-            {
+    else {
+        for (int i = 0; i < n_rows; ++i) {
+            for (int j = 0; j < n_frame; ++j) {
                 mel_data_2D[i][j] = mel.data[i * n_cols + j];
             }
         }
@@ -789,12 +779,9 @@ void featureExtractor(const PCMData& data)
         printf("The 3D vector is empty.\n");
 
     #ifdef DEBUG
-    for (int i = 0; i < mel_data_3D.size(); ++i)
-    {
-        for (int j = 0; j < mel_data_3D[i].size(); ++j)
-        {
-            for (int k = 0; k < mel_data_3D[i][j].size(); ++k)
-            {
+    for (int i = 0; i < mel_data_3D.size(); ++i) {
+        for (int j = 0; j < mel_data_3D[i].size(); ++j) {
+            for (int k = 0; k < mel_data_3D[i][j].size(); ++k) {
                 printf("%f ", mel_data_3D[i][j][k]);
             }
             printf("\n");
@@ -803,9 +790,9 @@ void featureExtractor(const PCMData& data)
     }
     #endif
 
-    // write the mel_data_3D to a file
+    // Write the mel_data_3D to a file
     static unsigned idx = 0;
-    std::string fname_output = std::string(std::getenv("HOME")) + "/data/fex-data/output_" + std::to_string(idx) + ".bin";
+    std::string fname_output = "data/features_" + std::to_string(idx) + ".bin";
     std::ofstream out(fname_output, std::ios::out | std::ios::binary | std::ios::trunc);
 
     if (!out)
@@ -829,7 +816,7 @@ marsBufferListCb(GstBufferList* buffers,
                  gpointer       user_data)
 {
     std::streamsize sizeInBytes = 0;
-    std::vector<int16_t> PCMBytesVec;
+    PCMBytesVec PCMBytesVector;
     uint len = gst_buffer_list_length(buffers);
 
     std::string msg { "Got buffer list with: " + std::to_string(len) + " buffers.\n" };
@@ -853,13 +840,15 @@ marsBufferListCb(GstBufferList* buffers,
         /**
          * TODO: Optimize -- we use an extra byte for each byte inserted
         */
-        PCMBytesVec.resize(mapInfo.size);
+        /**
+         * Terrible mistake:
+         * PCMBytesVec.resize(mapInfo.size);
+         */
 
         for (uint byteOffset = 0; byteOffset < mapInfo.size; ++byteOffset) {
             uint8_t bufferByte = *(mapInfo.data + byteOffset);
-            uint8_t* bytePtr = (uint8_t*)PCMBytesVec.data();
 
-            bytePtr[byteOffset] = bufferByte;
+            PCMBytesVector.push_back(bufferByte);
             ++sizeInBytes;
         }
 
@@ -873,7 +862,7 @@ marsBufferListCb(GstBufferList* buffers,
     */
     // dataQueueAddr->push({ PCMBytesVec, sizeInBytes });
     mu.lock();
-    dataQueue.push({ PCMBytesVec, sizeInBytes });
+    dataQueue.emplace(std::pair{ PCMBytesVector, sizeInBytes });
     mu.unlock();
 
     std::cout << '\n';

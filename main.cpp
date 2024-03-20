@@ -475,7 +475,7 @@ bool readPCMS16LE(const std::vector<int16_t>& PCMBytesVec,
                   bool stereo)
 {
     // Calculate the number of samples
-    std::streamsize num_samples = sizeInBytes / sizeof(PCMBytesVec[0]); // Essentially divide by 2
+    std::streamsize num_samples = sizeInBytes / sizeof(int16_t); // Essentially divide by 2
     std::streamsize num_samples_per_channel = stereo ? num_samples / 2 : num_samples;
 
     // Create a vector to hold the samples
@@ -788,7 +788,7 @@ void featureExtractor(const PCMData& data)
 
     ++idx;
     out.close();
-    // read_mel_data(fname_output, 80, 3000);
+    read_mel_data(fname_output, 80, 3000);
 
     Log() << "*** Feature extraction complete! ***\n\n";
 }
@@ -798,7 +798,6 @@ static void
 marsBufferListCb(GPtrArray* buffers,
                  gpointer   user_data)
 {
-    static uint fileCt = 0;
     std::streamsize sizeInBytes = 0;
     std::vector<int16_t> PCMBytesVec;
 
@@ -846,7 +845,6 @@ marsBufferListCb(GPtrArray* buffers,
     dataQueue.push({ PCMBytesVec, sizeInBytes });
     mu.unlock();
 
-    ++fileCt;
     std::cout << '\n';
 }
 
@@ -890,7 +888,7 @@ launchFeatureExtractor()
 
         mu.lock();
         auto data = dataQueue.front();
-        // dataQueue.pop();
+        dataQueue.pop();
         mu.unlock();
 
         featureExtractor(data);

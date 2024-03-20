@@ -8,6 +8,7 @@
 #include <fstream>
 #include <queue>
 #include <mutex>
+#include <atomic>
 
 #include "sys/stat.h"
 
@@ -24,13 +25,13 @@
 #define CHECKPT std::cout << __func__ << ":" << __LINE__ << '\n'
 // #define DEBUG 42
 
-using PCMSz = uint8_t;
 using PCMBytesVec = std::vector<uint8_t>;
 using PCMData = std::pair<PCMBytesVec, std::streamsize>;
 using PCMDataQueue = std::queue<PCMData>;
 
 std::mutex mu;
 PCMDataQueue dataQueue;
+std::atomic_bool chunkerStopped = false;
 
 static float sin_vals[SIN_COS_N_COUNT];
 static float cos_vals[SIN_COS_N_COUNT];
@@ -889,6 +890,7 @@ launchChunker()
     std::cin.get();
 
     mars_chunker_stop(chunker);
+    chunkerStopped = true;
 }
 
 
@@ -896,8 +898,12 @@ void
 launchFeatureExtractor()
 {
     while (true) {
-        if (dataQueue.empty())
+        if (dataQueue.empty()) {
+            if (chunkerStopped)
+                return;
+
             continue;
+        }
 
         std::string msg { "Queue size = " + std::to_string(dataQueue.size()) + ". Processing...\n" };
         Log() << msg;

@@ -22,7 +22,7 @@
 #define WHISPER_N_MELS 80
 #define SIN_COS_N_COUNT WHISPER_N_FFT
 #define CHECKPT std::cout << __func__ << ":" << __LINE__ << '\n'
-// #define DEBUG 42
+#define DEBUG 42
 
 using PCMData = std::pair<std::vector<int16_t>, std::streamsize>;
 using PCMDataQueue = std::queue<PCMData>;
@@ -468,56 +468,86 @@ bool read_pcm32(const std::string &fname, std::vector<float> &pcmf32, std::vecto
 }
 
 
+// bool readPCMS16LE(const std::vector<int16_t>& PCMBytesVec,
+//                   const std::streamsize sizeInBytes /* Should be PCMBytesVec.size() / 2, but just in case */,
+//                   std::vector<float>& pcmf32,
+//                   std::vector<std::vector<float>>& pcmf32s,
+//                   bool stereo)
+// {
+//     // Calculate the number of samples
+//     std::streamsize num_samples = sizeInBytes / sizeof(int16_t); // Essentially divide by 2
+//     std::streamsize num_samples_per_channel = stereo ? num_samples / 2 : num_samples;
+
+//     // Create a vector to hold the samples
+//     // std::vector<int16_t> samples(num_samples);
+
+//     // // Read the samples from the file
+//     // if (file.read(reinterpret_cast<char*>(samples.data()), size) != size)
+//     //     throw std::runtime_error("Failed to read all samples!");
+
+//     // Convert to float and normalize to range [-1.0, 1.0]
+//     pcmf32.reserve(num_samples_per_channel);
+
+//     if (stereo) {
+//         pcmf32s.resize(2);
+//         pcmf32s[0].reserve(num_samples_per_channel);
+//         pcmf32s[1].reserve(num_samples_per_channel);
+//     }
+
+//     for (std::streamsize i = 0; i < num_samples; ++i) {
+//         float normalized_sample = PCMBytesVec[i] / 32768.0f; // Normalize 16-bit range to [-1.0, 1.0]
+
+//         if (stereo)
+//             pcmf32s[i % 2].push_back(normalized_sample);
+//         else
+//             pcmf32.push_back(normalized_sample);
+//     }
+
+//     // If stereo, we need to de-interleave the channels
+//     if (stereo) {
+//         std::vector<float> left_channel(num_samples_per_channel);
+//         std::vector<float> right_channel(num_samples_per_channel);
+
+//         for (std::streamsize i = 0, j = 0; i < num_samples; i += 2, ++j) {
+//             left_channel[j] = pcmf32[i];
+//             right_channel[j] = pcmf32[i + 1];
+//         }
+
+//         pcmf32s[0] = std::move(left_channel);
+//         pcmf32s[1] = std::move(right_channel);
+//         pcmf32.clear(); // Clear the mono vector, as it's not needed for stereo
+//     }
+
+//     return true;
+// }
+
+
 bool readPCMS16LE(const std::vector<int16_t>& PCMBytesVec,
-                  const std::streamsize sizeInBytes /* Should be PCMBytesVec.size() / 2, but just in case */,
                   std::vector<float>& pcmf32,
                   std::vector<std::vector<float>>& pcmf32s,
                   bool stereo)
 {
     // Calculate the number of samples
-    std::streamsize num_samples = sizeInBytes / sizeof(int16_t); // Essentially divide by 2
+    std::streamsize num_samples = PCMBytesVec.size();
     std::streamsize num_samples_per_channel = stereo ? num_samples / 2 : num_samples;
-
-    // Create a vector to hold the samples
-    // std::vector<int16_t> samples(num_samples);
-
-    // // Read the samples from the file
-    // if (file.read(reinterpret_cast<char*>(samples.data()), size) != size)
-    //     throw std::runtime_error("Failed to read all samples!");
-
+    // Clear the output vectors
+    pcmf32.clear();
+    pcmf32s.clear();
     // Convert to float and normalize to range [-1.0, 1.0]
-    pcmf32.reserve(num_samples_per_channel);
-
     if (stereo) {
         pcmf32s.resize(2);
-        pcmf32s[0].reserve(num_samples_per_channel);
-        pcmf32s[1].reserve(num_samples_per_channel);
-    }
-
-    for (std::streamsize i = 0; i < num_samples; ++i) {
-        float normalized_sample = PCMBytesVec[i] / 32768.0f; // Normalize 16-bit range to [-1.0, 1.0]
-
-        if (stereo)
-            pcmf32s[i % 2].push_back(normalized_sample);
-        else
-            pcmf32.push_back(normalized_sample);
-    }
-
-    // If stereo, we need to de-interleave the channels
-    if (stereo) {
-        std::vector<float> left_channel(num_samples_per_channel);
-        std::vector<float> right_channel(num_samples_per_channel);
-
-        for (std::streamsize i = 0, j = 0; i < num_samples; i += 2, ++j) {
-            left_channel[j] = pcmf32[i];
-            right_channel[j] = pcmf32[i + 1];
+        pcmf32s[0].resize(num_samples_per_channel);
+        pcmf32s[1].resize(num_samples_per_channel);
+        for (std::streamsize i = 0; i < num_samples; i += 2) {
+            pcmf32s[0][i / 2] = static_cast<float>(PCMBytesVec[i]) / 32768.0f;
+            pcmf32s[1][i / 2] = static_cast<float>(PCMBytesVec[i + 1]) / 32768.0f;
         }
-
-        pcmf32s[0] = std::move(left_channel);
-        pcmf32s[1] = std::move(right_channel);
-        pcmf32.clear(); // Clear the mono vector, as it's not needed for stereo
+    } else {
+        pcmf32.resize(num_samples_per_channel);
+        for (std::streamsize i = 0; i < num_samples; ++i) {
+            pcmf32[i] = static_cast<float>(PCMBytesVec[i]) / 32768.0f;
+        }
     }
-
     return true;
 }
 
@@ -700,7 +730,7 @@ void featureExtractor(const PCMData& data)
     fill_sin_cos_table();
 
     bool stereo = false;
-    bool result = readPCMS16LE(data.first, data.second, pcmf32, pcmf32s, stereo);
+    bool result = readPCMS16LE(data.first, pcmf32, pcmf32s, stereo);
 
     if (result) {
         log_mel_spectrogram(pcmf32.data(),

@@ -825,17 +825,18 @@ void featureExtractor(const PCMData& data)
 
 
 static void
-marsBufferListCb(GPtrArray* buffers,
-                 gpointer   user_data)
+marsBufferListCb(GstBufferList* buffers,
+                 gpointer       user_data)
 {
     std::streamsize sizeInBytes = 0;
     std::vector<int16_t> PCMBytesVec;
+    uint len = gst_buffer_list_length(buffers);
 
-    std::string msg { "Got buffer list with: " + std::to_string(buffers->len) + " buffers.\n" };
+    std::string msg { "Got buffer list with: " + std::to_string(len) + " buffers.\n" };
     Log() << msg;
 
-    for (uint i = 0; i < buffers->len; ++i) {
-        GstBuffer* buffer = GST_BUFFER(buffers->pdata[i]);
+    for (uint i = 0; i < len; ++i) {
+        GstBuffer* buffer = gst_buffer_list_get(buffers, i);
         GstMapInfo mapInfo;
 
         if (!gst_buffer_map(buffer, &mapInfo, GST_MAP_READ)) {

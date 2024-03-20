@@ -838,13 +838,9 @@ marsBufferListCb(GstBufferList* buffers,
         Log() << msg;
 
         /**
-         * TODO: Optimize -- we use an extra byte for each byte inserted
+         * Push each valid byte from all the buffers consecutively. We will
+         * use this vector later on to extract features.
         */
-        /**
-         * Terrible mistake:
-         * PCMBytesVec.resize(mapInfo.size);
-         */
-
         for (uint byteOffset = 0; byteOffset < mapInfo.size; ++byteOffset) {
             uint8_t bufferByte = *(mapInfo.data + byteOffset);
 
@@ -860,7 +856,7 @@ marsBufferListCb(GstBufferList* buffers,
      * 1) Create the object first and update it instead of pushing a copy
      * 2) If pushing too quickly to the queue, wait until a certain threshold has been consumed
     */
-    // dataQueueAddr->push({ PCMBytesVec, sizeInBytes });
+
     mu.lock();
     dataQueue.emplace(std::pair{ PCMBytesVector, sizeInBytes });
     mu.unlock();

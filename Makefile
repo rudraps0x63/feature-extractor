@@ -7,6 +7,7 @@ LD_FLAGS := `pkg-config --libs ${DEPENDS}`
 
 LIB_DIR := libs
 BUILD_DIR := _build
+DATA_DIR := data
 SOURCES := main.cpp ${wildcard ${LIB_DIR}/*.c}
 EXEC := fex
 
@@ -33,5 +34,5 @@ chunker.o: ${LIB_DIR}/chunker.c
 	@${CC} ${CC_FLAGS} ${LIB_DIR}/chunker.c -o ${BUILD_DIR}/chunker.o
 
 clean:
-	@rm -rf ${wildcard ./*.o ${EXEC} ${BUILD_DIR}}
+	@rm -rf ${wildcard ./*.o ${EXEC} ${BUILD_DIR} ${DATA_DIR}/features*}
 

@@ -1,7 +1,6 @@
 DEPENDS := glib-2.0 gstreamer-1.0 gstreamer-base-1.0
 
 CC := g++
-# $(...) is also used to evaluate Makefile variables, so choose `...` or $$(...) instead for shell cmds
 CC_FLAGS := -c -fpermissive `pkg-config --cflags ${DEPENDS}`
 LD_FLAGS := `pkg-config --libs ${DEPENDS}`
 
@@ -16,10 +15,7 @@ all: builddir bin
 builddir:
 	@mkdir -p ${BUILD_DIR}
 
-john:
-	echo ${wildcard ${BUILD_DIR}/*.o}
-
-bin: main.o callback-sink.o chunker.o
+bin: main.o callback-sink.o chunker.o fex.o
 	@${CC} ${LD_FLAGS} ${wildcard ${BUILD_DIR}/*.o} -o ${EXEC}
 	@echo "make successful! Built binary: fex."
 	@echo "Run with ./fex or add the current working directory to PATH envvar and execute it as a normal program."
@@ -32,6 +28,9 @@ callback-sink.o: ${LIB_DIR}/callback-sink.c
 
 chunker.o: ${LIB_DIR}/chunker.c
 	@${CC} ${CC_FLAGS} ${LIB_DIR}/chunker.c -o ${BUILD_DIR}/chunker.o
+
+fex.o: ${LIB_DIR}/fex.cpp
+	@${CC} ${CC_FLAGS} ${LIB_DIR}/fex.cpp -o ${BUILD_DIR}/fex.o
 
 clean:
 	@rm -rf ${wildcard ./*.o ${EXEC} ${BUILD_DIR} ${DATA_DIR}/features*}
